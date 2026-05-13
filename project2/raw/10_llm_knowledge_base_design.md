@@ -1,99 +1,62 @@
-# LLM-Powered Personal Knowledge Base: Design and Implementation
+# karpathy KB notes
 
-## The Karpathy Knowledge Base Paradigm
+karpathy's idea: use an LLM not as a Q&A oracle but as a curator/connector. the LLM reads your raw notes (which are messy, fragmented, redundant) and synthesizes them into structured wiki articles with cross-links. then Q&A runs against the wiki, not the raw notes.
 
-Andrej Karpathy's personal knowledge base concept treats an LLM not as a Q&A oracle but as a curator and connector — the system reads raw sources, synthesizes them into structured wiki articles, creates links between related concepts, and then answers questions by reasoning over the compiled wiki rather than the raw sources.
+key insight: the compilation step adds value that the raw sources don't have. it resolves contradictions, adds structure, creates connections across notes that you wrote separately, and distills key concepts. the wiki is better than the sum of its parts.
 
-This produces a knowledge base that is:
-- **Coherent**: a single synthesizing voice across heterogeneous sources
-- **Interlinked**: concepts reference each other in a navigable graph
-- **Queryable**: a Q&A interface reasons over the compiled wiki with citations
-- **Evolvable**: new raw sources can be added and incrementally compiled
+---
 
-## Architecture
+architecture:
+raw/ (messy notes) → compile_wiki.py (LLM) → wiki/ (structured articles) → qa.py (retrieval + LLM) → answers
 
-```
-raw/         ← Raw source documents (markdown, text, notes)
-    ↓
-compile_wiki.py ← LLM reads all raw sources, synthesizes wiki articles
-    ↓
-wiki/        ← Compiled, interlinked markdown articles
-    ↓
-qa.py        ← Q&A interface: retrieves relevant wiki sections, answers questions
-```
+the three components:
 
-## The Compilation Step
+1. compile_wiki.py: reads ALL raw sources in a single context window (1M tokens means the whole raw/ fits easily). for each concept, asks the LLM to synthesize a wiki article. articles use [[WikiLink]] format to cross-reference other articles.
 
-The compiler performs three subtasks:
-1. **Concept extraction**: identify key concepts, topics, and entities across all raw sources
-2. **Article synthesis**: for each identified concept, write a coherent wiki article synthesizing all relevant raw content
-3. **Link injection**: add `[[WikiLinks]]` between related concepts, creating a knowledge graph
+2. wiki/: output of compilation. one .md file per concept. articles include Key Concepts section, Design Implications, See Also with wikilinks.
 
-The LLM receives the full set of raw documents in context and generates wiki articles one at a time. With Claude's 1M token context window, all raw sources can fit in a single compilation pass.
+3. qa.py: user asks a question. system retrieves the most relevant wiki articles (by keyword overlap OR embedding similarity). injects retrieved content into LLM context. LLM answers with citations.
 
-**Prompt pattern for synthesis**:
-```
-You are a wiki author synthesizing a personal knowledge base on AI-powered social platforms.
-You have read the following raw source documents: [list of filenames]
+---
 
-Write a comprehensive wiki article on the topic: "{topic}"
-- Use clear headers (##, ###)
-- Reference related concepts using [[WikiLink]] format for interlinking
-- Synthesize across sources — don't just copy; add structure and connections
-- Include a "## See Also" section listing 3-5 related wiki articles
-- Keep the article self-contained: a reader unfamiliar with other articles should understand this one
-```
+what makes this better than just asking the LLM about the topic directly?
 
-## The Q&A Step
+- grounded: answers are constrained to what's in your actual notes/sources, not the LLM's training data
+- structured: the wiki adds organization that makes answers more reliable
+- updatable: add new raw sources, recompile affected articles, Q&A improves
+- auditable: you can trace every answer back to specific wiki articles and then to specific raw sources
 
-The Q&A interface:
-1. Accepts a natural language question from the user
-2. Identifies which wiki articles are most relevant (via keyword search or embedding similarity)
-3. Injects the relevant article text into the LLM context
-4. Generates an answer that cites specific wiki articles
+---
 
-**Prompt pattern for Q&A**:
-```
-You are answering questions using the following wiki knowledge base articles:
-[injected wiki content]
+the compilation step needs careful prompting:
 
-Answer the following question concisely and accurately, citing the wiki articles you draw from:
-Question: "{question}"
-```
+bad prompt: "summarize this document"
+→ you get summaries that are just paraphrases of individual raw sources
 
-## Wiki Link Graph
+good prompt: "you have read ALL of the following notes. synthesize a wiki article on [topic] that:
+- draws from multiple sources, not just one
+- resolves any contradictions you find between sources
+- adds connections and implications that are suggested by multiple sources together but not stated in any single one
+- uses [[WikiLink]] format to reference related topics"
 
-The `[[WikiLink]]` format creates a navigable knowledge graph:
-- Links are parsed and rendered as clickable references in the Q&A interface
-- The link graph reveals conceptual proximity: topics that link to each other often are closely related
-- Orphan detection: articles with no incoming links may indicate isolated topics that need connecting
+the key is "resolves contradictions" and "adds connections implied by multiple sources." this is where the LLM actually adds value beyond reformatting.
 
-## Incremental Compilation
+---
 
-When new raw sources are added:
-1. Identify which existing wiki articles are affected (LLM-assisted topic classification)
-2. Re-compile only those articles (not the full wiki)
-3. Update the link graph
-4. Re-index for Q&A retrieval
+retrieval options:
 
-This avoids the cost of recompiling the entire wiki for each new source.
+keyword (simple, no API): works fine for small wikis (< 20 articles). fails on semantic mismatches ("how does the system detect sadness" doesn't match "AffectiveComputing" by keyword).
 
-## Implementation Details for This Project
+embedding similarity (better): embed each wiki article, embed the query, cosine similarity. sentence-transformers (local, free, no API) works well. models like all-MiniLM-L6-v2 are 80MB and run in <50ms on CPU.
 
-**Raw sources**: 10 markdown documents covering shared experience platforms, mentor-mentee matching, affective computing, STT, TTS, dialogue systems, empathetic AI design, experience storage, platform architecture, and this document.
+LLM-as-retriever: ask the LLM "which of these article topics is most relevant to this question?" — surprisingly effective, but costs an extra API call per query.
 
-**Wiki articles generated**: one per major concept identified by the LLM across all raw sources. Expected articles include: ExperienceMatching, AffectiveComputing, VoiceInterface, DialogueSystem, EmpathyDesign, MentorCapacityManagement, PrivacyArchitecture, SafetyEscalation, EmbeddingPipeline, MatchQualityMetrics.
+for production: embedding similarity. for prototype: keyword is fine to start.
 
-**Q&A interface**: command-line; accepts any question; returns answer with cited wiki articles.
+---
 
-**LLM**: Claude Opus 4.7 with adaptive thinking for compilation (complex synthesis); Claude Haiku 4.5 for Q&A (faster, cheaper for retrieval-augmented Q&A).
-
-## What This Demonstrates
-
-The knowledge base shows that:
-1. LLMs can synthesize heterogeneous raw documents into coherent, interlinked knowledge
-2. The compiled wiki is more useful than the raw sources for Q&A — it adds structure that the raw sources lack
-3. Retrieval-augmented Q&A over the wiki is accurate and citation-grounded
-4. The pipeline is modular: swap the topic area, regenerate the wiki, and the Q&A interface works identically
-
-This pattern generalizes to any domain where a practitioner has a body of notes, papers, and articles they want to make queryable.
+gaps / things i want to improve:
+- multi-hop retrieval: Q&A currently retrieves top-k articles but doesn't follow wikilinks to transitively relevant articles. "how does affective computing improve mentor matching over time?" needs both AffectiveComputing AND ExperienceMatching AND MentorMenteeSystem
+- incremental compilation: currently need to recompile everything on any change. should detect which articles are affected by a new/changed raw source and only recompile those
+- web UI for wikilink navigation: rendering [[WikiLink]] as bold text is fine for a prototype. a real UI would make them clickable
+- evaluation: need a proper eval set — questions with ground-truth answers derivable from raw sources — to measure accuracy and hallucination rate

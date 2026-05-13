@@ -1,75 +1,58 @@
-# Mentor-Mentee Matching Systems: Algorithms and Experience-Based Approaches
+# matching system notes
 
-## The Matching Problem
+gale-shapley stable marriage — the theoretical foundation. two-sided market where both mentor and mentee have to accept. practically, stable matching is too strict — we'd rather optimize for expected engagement than strict stability. but the framing is useful.
 
-Mentor-mentee matching is a form of two-sided market assignment. Unlike one-sided recommendation (suggesting products to users), both parties must find value. The classic formulation is the **stable marriage problem** (Gale-Shapley, 1962): find an assignment such that no mentor-mentee pair would both prefer to be matched with each other over their current assignment.
+---
 
-In practice, experience-based platforms relax the stability requirement and optimize instead for **predicted engagement** and **perceived relevance**.
+what features matter for a good match?
 
-## Feature Engineering for Experience Matching
+temporal: when did the experience happen? someone 2 years past a diagnosis is more useful to a newly diagnosed person than someone 15 years past. the recency of the experience matters a lot.
 
-A matching system must extract features from user-submitted experiences. Key feature categories:
+severity and duration: 3-month job loss vs 2-year unemployment are really different experiences. we need to capture magnitude somehow.
 
-**Temporal features**: When did the experience occur? Recency matters — a person 2 years past a divorce is more useful to someone 6 months in than someone 15 years past.
+emotional texture: was the experience primarily isolating? chaotic? grief-filled? matching on emotional texture might surface empathetic resonance that category matching misses. like, two people who both describe their experience as "totally isolating and no one understood" might connect better than two people who share a diagnosis but processed it differently.
 
-**Severity and duration**: A 3-month job loss differs from a 2-year unemployment spiral. Capturing magnitude affects matching quality.
+outcome: did things get better? still ongoing? the person whose divorce resolved positively has different things to offer than someone still in it. should we match people by trajectory/status too?
 
-**Outcome trajectory**: Did the mentor's situation resolve positively, negatively, or remain ongoing? Users in similar outcome trajectories often have more to offer each other.
+---
 
-**Emotional texture**: Was the experience primarily isolating, chaotic, grief-filled, uncertain? Matching on emotional texture surfaces empathetic resonance.
+embedding approach:
+1. user writes/speaks their experience narrative
+2. STT transcription if voice input
+3. LLM embeds the narrative
+4. nearest neighbor search in embedding space (FAISS or pgvector)
+5. return candidate pool
 
-## Embedding-Based Matching
+problem: embeddings are opaque. the match seems good but you can't explain why. users distrust recommendations they don't understand, especially in sensitive contexts.
 
-Modern systems use large language models to embed experience narratives into dense vector representations. Two users are matched when their experience embeddings have high cosine similarity in a shared semantic space.
+better approach: hybrid. fast embedding retrieval for top-100 candidates, then slower re-ranking with LLM that generates an explanation. the explanation is then shown to both parties. this increases acceptance rate dramatically (anecdotally — need to find a study on this).
 
-**Pipeline**:
-1. User writes/records their experience narrative
-2. Speech-to-text transcription (if voice input)
-3. LLM embeds the narrative: `embedding = model.embed(narrative)`
-4. Nearest-neighbor search in the experience embedding space (FAISS or pgvector)
-5. Candidate pool returned for further filtering
+---
 
-**Advantages**: captures semantic nuance beyond keyword overlap; generalizes to novel phrasings.
+cold start is a real problem. new users have no narrative. options:
+- structured onboarding interview → synthetic narrative
+- collaborative filtering fallback on demographics until behavioral data builds up
+- progressive disclosure — let them add experience over time, matches improve
 
-**Disadvantages**: embeddings are opaque — a match seems good but it's hard to explain why. Users may distrust black-box recommendations.
+my instinct: the onboarding interview is important for the product anyway (it's the moment where the user feels heard for the first time), so lean into it. make the interview itself the value, not just a means to an end.
 
-## Hybrid Scoring Architecture
+---
 
-Best-in-class systems use a two-stage approach:
+mentor capacity: max 3 active mentees. this is roughly what i see in peer support literature — more than that and quality degrades. need a real cap, not just a soft recommendation.
 
-**Stage 1 — Retrieval**: Fast approximate nearest-neighbor search using embeddings to retrieve top-100 candidates from a pool of thousands.
+burnout is underappreciated. mentors are volunteers. if they're overwhelmed they just disappear. need:
+- hard capacity limit
+- automated check-ins ("how are you feeling about this relationship?")
+- structured off-ramps
+- mentor-only community (so helpers have their own support)
 
-**Stage 2 — Re-ranking**: A slower but more precise scoring model considers:
-- Compatibility score (embedding similarity)
-- Availability signal (mentor active in past 30 days?)
-- Communication style match (formal vs. casual, verbose vs. terse)
-- Mentor capacity (how many mentees are they currently supporting?)
+---
 
-## Cold-Start Problem
+eval metrics:
+- match acceptance rate (target >60%)
+- first message within 48h
+- still talking at 4 weeks (>40%)
+- mentee helpfulness score (>4.0/5)
+- mentor satisfaction monthly
 
-New users have no experience narrative yet. Solutions:
-- **Guided onboarding**: structured interview that produces a synthetic narrative
-- **Collaborative filtering fallback**: match on demographic proxies until behavioral data accumulates
-- **Progressive disclosure**: allow users to add experiences incrementally; improve matches over time
-
-## Mentor Capacity and Burnout Prevention
-
-Peer mentors are not therapists. Systems must:
-- Cap mentor load (e.g., maximum 3 active mentees)
-- Monitor conversation length and frequency for burnout signals
-- Build in structured off-ramps ("this conversation has been going for 8 weeks — how are you both doing?")
-- Offer mentor-only support channels and community spaces
-
-## Evaluation Framework
-
-| Metric | Definition | Target |
-|--------|-----------|--------|
-| Match acceptance rate | % of suggested matches both parties accept | > 60% |
-| First message sent within 48h | Immediacy of connection | > 70% |
-| 4-week conversation retention | Still talking after a month | > 40% |
-| Mentee-reported helpfulness (1-5) | Post-conversation survey | > 4.0 |
-| Mentor satisfaction score | Monthly survey | > 3.8 |
-
-## Connection to This Project
-
-The platform automates Stage 1 retrieval using LLM-based experience embedding and uses Claude to re-rank candidates by generating a natural-language "fit explanation" — why this mentor and mentee are a good match. This explanation is shown to both parties, increasing acceptance rates by making the match feel intentional rather than algorithmic.
+note: these metrics conflict sometimes. optimizing pure acceptance rate could mean showing easy/obvious matches that don't actually lead to lasting relationships. need to weight long-term retention more.

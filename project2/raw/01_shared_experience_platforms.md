@@ -1,48 +1,41 @@
-# Shared Experience Platforms: Design Principles and Architecture
+# notes on experience-based social platforms
 
-## Overview
+read the patientslikeme paper today. interesting model — people document their treatment journeys and the platform finds others on similar paths. but it's really structured around disease categories which feels limiting. what if the experience doesn't fit a category neatly?
 
-Shared experience platforms connect individuals based on common life events, challenges, or milestones. Unlike traditional social networks that connect users by demographics or interests, experience-based platforms treat lived history as the primary signal for meaningful connection. The foundational hypothesis is that empathy is most effectively transmitted between people who have navigated the same territory.
+7 cups model: volunteer listeners matched to people seeking support. uses structured conversation flows. feels a bit scripted when i've tried it. the matching is pretty rough — mostly just "are you available right now."
 
-## Key Design Principles
+key insight from today: the fundamental claim is that empathy is most effectively transmitted between people who have navigated the same territory. this feels right intuitively but is it actually true? need to find research on this.
 
-**Experience as Identity**: Users define themselves not by profession or location but by their life events — illness, grief, career transitions, immigration, parenthood. These events carry emotional weight that makes connections deeper and conversations more productive.
+---
 
-**Contextual Relevance**: A 45-year-old cancer survivor and a newly diagnosed 28-year-old share a meaningful connection despite demographic differences. Experience-based matching surfaces this signal above noise.
+reddit communities do this at massive scale with zero algorithm. r/cancer r/grief r/survivorship — people just self-select into their category. works surprisingly well because the signal (shared experience) is so strong. the community itself does the matching implicitly.
 
-**Reciprocal Value**: Unlike information-query systems, shared experience platforms produce bidirectional value. The mentor reinforces their own growth by articulating it; the mentee gains a roadmap. This dynamic is central to peer support networks like AA, grief counseling circles, and Reddit communities like r/survivorship.
+togetherall is interesting — anonymous, licensed to universities. they say anonymity reduces stigma. but also reduces the ability to build actual relationships? tradeoff.
 
-## Existing Examples
+---
 
-- **Togetherall** (formerly Big White Wall): Anonymous mental health peer support, licensed to universities and employers.
-- **7 Cups**: Volunteer listeners matched to people seeking emotional support, using structured conversation flows.
-- **PatientsLikeMe**: Medical experience sharing platform where patients document treatment journeys and connect with others on similar paths.
-- **Reddit AMAs and support subreddits**: Informal experience-based connection at massive scale.
+data problem: how do you represent "experience" in a machine-readable form? three approaches seem to exist:
+- tag taxonomies (pick your experience from a list) — queryable but loses nuance. "divorce" doesn't capture "divorce after 20 year marriage with 3 kids"
+- free text narratives (just write your story) — rich but hard to query
+- structured interview (platform asks guided questions) — middle ground
 
-## Data Architecture Challenges
+we're probably going with some hybrid. LLM can extract structure from free text. best of both?
 
-The core technical challenge is representing "experience" in a machine-readable, matchable form. Three approaches dominate:
+---
 
-1. **Tag-based schemas**: Users select from a predefined taxonomy (e.g., "diagnosed with Type 2 diabetes, 2019"). Simple and queryable but loses nuance.
-2. **Free-text narrative storage**: Users write their story; NLP extracts entities and sentiment. Richer but requires robust extraction pipelines.
-3. **Structured interview capture**: Platform asks guided questions; answers are stored as structured records. Balances richness with queryability.
+metrics for matching quality: this is hard. you can't just measure accuracy the way you do for product recommendation because both parties have to be satisfied. relevant metrics:
+- did they actually start a conversation?
+- how long did they talk?
+- did the mentee come back?
+- did the mentor report feeling useful?
 
-## Privacy and Trust Mechanisms
+also thinking about mentor burnout. this is underrated. if you match someone with too many needy people they'll just stop showing up. need capacity limits.
 
-Experience-based platforms handle uniquely sensitive data. Effective mechanisms include:
-- Opt-in anonymity toggles per experience type
-- Federated identity: profile visible to matched users only
-- Time-decay: old experiences can be archived or de-emphasized
-- Consent-first data sharing for research use
+---
 
-## Matching Quality Metrics
+privacy is a big deal here. these are people sharing their worst moments. need:
+- opt-in anonymity per experience (some things you'll share publicly, others never)
+- time-decay on experiences (your 2019 divorce shouldn't define your profile forever)
+- consent-first for any research use
 
-Evaluating match quality is harder than for product recommendation. Relevant metrics include:
-- **Conversation initiation rate**: did the matched pair actually connect?
-- **Session length and return rate**: did they have a meaningful exchange?
-- **Self-reported value** (post-conversation surveys): did the mentee feel helped?
-- **Mentor burnout rate**: are helpers feeling overwhelmed?
-
-## Connection to This Project
-
-This platform builds on these principles by adding two new layers: (1) an AI-mediated conversational interface that removes friction from the first connection, and (2) affective computing that enables the platform to recognize when a conversation is going well versus when a user is in distress, triggering appropriate responses.
+TODO: think more about the federated identity question — can we have a profile that's only visible to matched users? feels right.

@@ -5,50 +5,77 @@ INDENG 231 — Data Modeling
 
 ---
 
-## What This Is
+## How It Works
 
-A Karpathy-style personal knowledge base built with Claude. Raw source documents on the topic of AI-powered peer support platforms are compiled by an LLM into structured, interlinked wiki articles. A Q&A interface answers questions by retrieving relevant wiki articles and generating cited answers using the Claude API.
+This is a [Karpathy-style](https://twitter.com/karpathy/status/1751350002281300461) personal knowledge base built with Claude.
+
+**The pipeline:**
+
+```
+raw/                raw research notes (messy, informal, fragmented)
+    ↓
+compile_wiki.py     Claude Opus 4.7 reads all 10 notes at once,
+                    synthesizes structured wiki articles, resolves
+                    contradictions, surfaces cross-source insights
+    ↓
+wiki/               10 interlinked markdown articles with [[WikiLinks]]
+    ↓
+qa.py               embedding-based retrieval (sentence-transformers, local)
+                    + Claude Haiku for answer generation with citations
+```
+
+The compilation step is where the LLM adds real value: it synthesizes across multiple messy sources, resolves contradictions between them, and surfaces implications not stated in any single note.
 
 ---
 
 ## Setup
 
+**1. Install dependencies**
 ```bash
-pip install anthropic
+pip install anthropic sentence-transformers
 ```
 
-Create a `.env` file with your Anthropic API key:
+**2. Get an Anthropic API key**
+
+Go to [console.anthropic.com](https://console.anthropic.com/) → API Keys → Create key.
+
+**3. Create a `.env` file in `project2/`**
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
+
+**4. Verify everything is set up**
+```bash
+python test_pipeline.py
 ```
 
 ---
 
 ## Usage
 
-### List compiled wiki articles
+### Step 1: Compile the wiki (requires API key, ~5-10 min, costs ~$1-2)
 ```bash
-python qa.py --list
+python compile_wiki.py            # compile all 10 articles
+python compile_wiki.py --force    # recompile even if wiki/ exists
+python compile_wiki.py --topic AffectiveComputing  # one article only
 ```
 
-### Ask a question (single-shot)
+### Step 2: Ask questions (requires API key for answer generation)
 ```bash
-python qa.py --question "How does the platform detect when a user is in crisis?"
-python qa.py --question "What is the latency budget for voice interaction?"
-python qa.py --question "How are mentor-mentee matches explained to users?"
-```
+# Single question
+python qa.py -q "How does the platform detect when a user is in crisis?"
+python qa.py -q "What is the latency budget for voice interaction?"
+python qa.py -q "How does mentor burnout get prevented?"
+python qa.py -q "What makes this matching system better than tag-based matching?"
 
-### Interactive Q&A mode
-```bash
+# Interactive mode
 python qa.py
-```
-Type questions and press Enter. Type `list` to see articles, `quit` to exit.
 
-### Recompile the wiki (requires API key)
-```bash
-python compile_wiki.py           # skip existing articles
-python compile_wiki.py --force   # recompile everything
-python compile_wiki.py --topic AffectiveComputing  # recompile one article
+# List articles + link graph stats
+python qa.py --list
+
+# Rebuild embedding index (no API key needed)
+python qa.py --index
 ```
 
 ---
@@ -57,7 +84,7 @@ python compile_wiki.py --topic AffectiveComputing  # recompile one article
 
 ```
 project2/
-├── raw/                          # 10 source documents (the "personal notes")
+├── raw/                        ← 10 messy research notes (the input)
 │   ├── 01_shared_experience_platforms.md
 │   ├── 02_mentor_mentee_matching.md
 │   ├── 03_affective_computing.md
@@ -69,31 +96,30 @@ project2/
 │   ├── 09_platform_integration_architecture.md
 │   └── 10_llm_knowledge_base_design.md
 │
-├── wiki/                         # Compiled wiki articles (LLM output)
-│   ├── ExperienceMatching.md
+├── wiki/                       ← Compiled wiki articles (LLM output)
 │   ├── AffectiveComputing.md
-│   ├── VoiceInterface.md
 │   ├── DialogueSystem.md
-│   ├── EmpathyDesign.md
-│   ├── MentorMenteeSystem.md
-│   ├── ExperienceStorageRetrieval.md
-│   ├── PlatformArchitecture.md
-│   ├── SafetyAndEscalation.md
-│   ├── KnowledgeBaseDesign.md
-│   └── _index.json               # Link graph and metadata
+│   ├── ...
+│   ├── _index.json             ← Link graph + word counts
+│   └── _embeddings.pkl         ← Cached sentence-transformer embeddings
 │
-├── compile_wiki.py               # LLM-powered wiki compiler
-├── qa.py                         # Q&A interface
-├── build_index.py                # Rebuild _index.json (no API needed)
-└── README.md
+├── compile_wiki.py             ← LLM compiler (Claude Opus 4.7)
+├── qa.py                       ← Q&A interface (sentence-transformers + Claude Haiku)
+├── build_index.py              ← Rebuild _index.json (no API needed)
+├── test_pipeline.py            ← Validates the full setup
+└── generate_report2.py         ← Generates the PDF report
 ```
 
 ---
 
-## Design
+## Design Details
 
-**Compilation** (`compile_wiki.py`): uses Claude Opus 4.7 with adaptive thinking to synthesize wiki articles from all raw sources. Each article uses `[[WikiLink]]` format to reference related topics, creating a navigable knowledge graph.
+**Compilation** uses Claude Opus 4.7 with adaptive thinking. The prompt explicitly instructs the model to:
+- Synthesize across *all* raw sources, not just one
+- Identify and resolve contradictions between notes
+- Surface implications that emerge only from reading multiple notes together
+- Use `[[WikiLink]]` format to cross-reference related articles
 
-**Q&A** (`qa.py`): uses Claude Haiku 4.5 (fast, cost-effective) with keyword-based retrieval. Retrieves the top-4 most relevant wiki articles and injects them as context for answer generation.
+**Retrieval** uses `sentence-transformers` (`all-MiniLM-L6-v2`, 80MB, runs locally). Embeddings are cached in `wiki/_embeddings.pkl`. Cosine similarity finds the 4 most relevant articles for each question — this correctly handles semantic matches that keyword overlap misses (e.g. "sad" → `AffectiveComputing`).
 
-**Pre-compilation**: the `wiki/` directory is pre-compiled and committed. Users can run Q&A without an API key unavailability interrupting the demo — only live Q&A requires the key.
+**Q&A** uses Claude Haiku 4.5 — fast and cost-effective for retrieval-augmented generation. Retrieved articles are injected as context and the model answers with citations.

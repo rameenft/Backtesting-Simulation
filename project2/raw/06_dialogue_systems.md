@@ -1,109 +1,65 @@
-# Real-Time Dialogue Systems: Architecture and Design for Social Platforms
+# dialogue system notes
 
-## What Makes Dialogue Hard
+the hard part of dialogue is not generating good responses to isolated messages — it's maintaining coherence across many turns, tracking what the conversation is trying to accomplish, and knowing when to push forward vs let silence breathe.
 
-A dialogue system must do more than generate good responses to isolated messages. It must:
-- Maintain coherent context across many turns
-- Track conversational goals and ensure they are being met
-- Recover gracefully from misunderstandings
-- Know when to ask clarifying questions vs. make progress
-- Manage pacing — when to push forward, when to let silence breathe
+in emotionally sensitive conversations this is all harder. misreading intent or responding too fast can break trust in a way that's hard to recover from.
 
-In emotionally sensitive conversations, these challenges are amplified: misreading the user's intent or responding too quickly can damage trust.
+---
 
-## Classic Dialogue System Architectures
+two main architectures:
 
-**Pipeline architecture**:
-```
-ASR → NLU → Dialogue Manager → NLG → TTS
-```
-- ASR: speech recognition
-- NLU: intent classification + entity extraction
-- DM: selects next action based on dialogue state
-- NLG: generates text response
-- TTS: synthesizes speech
+pipeline (classic): ASR → NLU (intent + entity extraction) → dialogue manager (state machine) → NLG → TTS. modular, each component improvable. but error propagation is brutal — one wrong intent classification cascades. and the state machine gets rigid fast.
 
-Advantages: modular, each component can be improved independently.
-Disadvantages: error propagation (ASR error → NLU error → wrong action), rigid state machine limits naturalness.
+end-to-end neural (modern): single LLM handles everything. conversation history in context, response generated directly. no explicit state machine — context managed implicitly in attention. chatgpt/claude/gemini all work this way. much more flexible, handles novel situations gracefully. but less controllable, harder to enforce specific behaviors.
 
-**End-to-end neural dialogue** (modern):
-- Single large model processes conversation history and generates next response
-- No explicit state machine — context managed implicitly in transformer attention
-- Examples: ChatGPT, Claude, Gemini
-- Advantages: flexible, handles novel situations gracefully
-- Disadvantages: less controllable, may hallucinate or drift from task
+we're going end-to-end for flexibility, but with explicit state tracking injected via system prompt to get the best of both.
 
-## Retrieval-Augmented Dialogue
+---
 
-For a knowledge-grounded platform, the dialogue system integrates retrieval:
+state tracking. even in end-to-end systems, explicit state helps. track:
+- user's primary experience (extracted at onboarding, updated over time)
+- current emotional state (from affect classifier)
+- conversation goal: narrative exploration? active mentor search? crisis support?
+- outstanding questions (what has the user asked that hasn't been answered?)
+- turn count + session metadata
 
-```
-User utterance
-    → Retrieval: find relevant mentor profiles, past conversations, resource articles
-    → Augmented context: retrieved content + conversation history
-    → LLM: generates response grounded in retrieved context
-    → Response + citations
-```
+store this in redis, inject as structured context in the system prompt each turn. LLM gets both the raw conversation history AND the structured state. much more reliable than hoping the model remembers everything from turn 1.
 
-This prevents the model from fabricating mentor experiences and grounds recommendations in actual matched profiles.
+---
 
-## Conversation State Tracking
+retrieval augmented generation. the dialogue system integrates retrieval from the experience corpus. before generating a response:
+- if conversation_goal = mentor_search: fetch top candidate profiles from pgvector
+- if conversation_goal = resource_seeking: fetch relevant articles
+- inject into context as "Retrieved context:" block
 
-Even in end-to-end systems, explicit state tracking improves reliability:
+this prevents fabricated mentor experiences. responses are grounded in real matched profiles.
 
-**Beliefs tracked**:
-- User's primary experience (extracted at onboarding, updated over time)
-- Current emotional state (from affective classifier)
-- Conversation goal: are we in (a) narrative exploration, (b) active mentor search, (c) crisis support?
-- Outstanding questions: what has the user asked that hasn't been answered?
+---
 
-**State representation**:
-```json
-{
-  "user_id": "u_8421",
-  "primary_experience": "cancer diagnosis, stage 2 breast cancer, 2024",
-  "current_emotion": {"dominant": "anxious", "intensity": 0.7},
-  "conversation_goal": "mentor_search",
-  "session_turn": 4,
-  "pending_questions": ["treatment options", "hair loss timeline"]
-}
-```
+conversation policies. the dialogue manager enforces these through system prompt instructions (not a state machine):
 
-## Multi-Turn Context Management
+validation-first: before any information or action, validate the user's emotional experience. this is rule 1.
+one question per turn: never ask multiple questions at once. too overwhelming.
+reflect before advise: summarize what you've heard before offering any perspective.
+pacing control: if user is sharing something heavy, don't pivot immediately. equivalent of "take your time."
+graceful uncertainty: if the system doesn't know, say so. "I don't have enough information to suggest a mentor yet — can you tell me more about..."
 
-LLMs have finite context windows. For long conversations:
-- **Rolling window**: keep last N turns in context
-- **Summarization**: compress older turns into a running summary
-- **Memory extraction**: extract key facts (user's name, situation details) and inject as structured context at each turn
+---
 
-Claude's 1M token context window reduces the need for aggressive truncation, but structured memory injection still improves coherence.
+context window management. for very long sessions:
+- rolling window: keep last N turns
+- summarization: compress older turns into a running summary
+- memory extraction: pull key facts (name, experience, outstanding topics) into structured memory injected each turn
 
-## Dialogue Policies for Supportive Conversations
+claude's 1M context means this is less urgent than for GPT-4 based systems, but structured memory injection still improves coherence even at shorter context lengths.
 
-The dialogue manager enforces conversation policies appropriate for peer support:
+---
 
-**Validation-first policy**: before any information-giving or action, validate the user's emotional experience. ("That sounds incredibly difficult" before "Here are some resources.")
+eval metrics for dialogue:
+- task completion rate (did they find a mentor / get what they needed?)
+- conversation coherence (human judges 1-5)
+- empathy score (classifier or human)
+- turns to task completion
+- user satisfaction (NPS or likert post-session)
 
-**One-question-at-a-time**: avoid overwhelming users with multiple questions in a single turn.
-
-**Reflection before advice**: summarize what you've heard before offering perspective.
-
-**Pacing control**: if the user is sharing something heavy, don't immediately pivot to next steps. Allow silence equivalents ("Take your time — I'm here").
-
-**Graceful uncertainty**: if the system doesn't know, say so. "I don't have enough information to suggest a mentor yet — can you tell me more about..."
-
-## Evaluation Metrics for Dialogue Systems
-
-| Metric | Method |
-|--------|--------|
-| Task completion rate | Did the user find a mentor / get the information they needed? |
-| Conversation coherence | Human judges rate coherence 1-5 |
-| Empathy score | Trained classifier or human rating |
-| Dialogue efficiency | Turns to task completion |
-| User-reported satisfaction | Post-session NPS or Likert scale |
-
-Automated metrics (BLEU, ROUGE) are poor proxies for dialogue quality — they measure n-gram overlap, not empathy or task success.
-
-## Connection to This Project
-
-The platform implements an LLM-based end-to-end dialogue system with explicit state tracking injected as structured system prompt context at each turn. Conversation policy rules (validation-first, one-question-at-a-time) are enforced through system prompt instructions rather than a hardcoded state machine, allowing natural language flexibility while maintaining structural guarantees.
+DO NOT use BLEU/ROUGE for dialogue evaluation. they measure n-gram overlap. they're terrible for this. you can generate a perfectly empathetic response that shares 0 words with a reference response.

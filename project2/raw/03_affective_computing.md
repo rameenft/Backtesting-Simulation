@@ -1,85 +1,41 @@
-# Affective Computing: Recognizing and Responding to Emotional States
+# affective computing reading notes
 
-## What Is Affective Computing?
+picard 1997 — the original paper. basic claim: systems that recognize, interpret, process, simulate affect. three capabilities: recognition, modeling, generation. the generation piece is what's hard — you can classify emotion reasonably well now but generating emotionally calibrated responses without it feeling fake is still an open problem.
 
-Affective computing (Picard, 1997) is the study of systems that recognize, interpret, process, and simulate human affect — emotions, moods, and attitudes. In the context of social platforms, affective computing enables the system to detect when a conversation is going well, when a user is in distress, or when a mentor is becoming overwhelmed, and to respond accordingly.
+---
 
-The three core capabilities are:
-1. **Affect recognition**: identify the user's emotional state from input signals
-2. **Affect modeling**: maintain a dynamic model of emotional state over time
-3. **Affect generation**: produce responses calibrated to the detected state
+modalities for recognition:
 
-## Input Modalities for Affect Recognition
+text: sentiment analysis (positive/negative/neutral), emotion classification (joy/sadness/anger/fear/surprise/disgust — Ekman's 6, though there's debate about whether this list is right), distress signals (crisis language). 
 
-**Text**:
-- Sentiment analysis: positive/negative/neutral polarity
-- Emotion classification: joy, sadness, anger, fear, surprise, disgust (Ekman's basic emotions)
-- Distress signals: crisis language detection (hopelessness, self-harm ideation)
-- Hedging and uncertainty markers: "I don't know if this makes sense" indicates low confidence
+main models right now: GoEmotions (google, 2020) — 27 emotion categories trained on reddit. EmoRoBERTa. VADER is older but still used for fast rule-based stuff.
 
-**Voice/Audio**:
-- Prosody: pitch, speech rate, pausing patterns
-- Volume dynamics: whispered vs. loud speech
-- Voice quality: trembling, breathiness (associated with anxiety)
-- Acoustic features: MFCCs (Mel-frequency cepstral coefficients), zero-crossing rate
+voice/audio: prosody (pitch, speech rate, pausing), volume dynamics, voice quality (trembling = anxiety). acoustic features: MFCCs, zero-crossing rate. 
 
-**Multimodal fusion**:
-Most robust systems combine text and audio signals. Audio catches what text misses (e.g., sarcasm, masked distress). Text catches nuance that audio misses (e.g., careful word choices indicating shame).
+multimodal: combining text + audio is more accurate than either alone. audio catches what text misses — sarcasm, masked distress. someone can type "I'm fine" in a completely flat, robotic way that the text classifier misses but the audio catches.
 
-## Text-Based Affect Recognition Pipeline
+---
 
-```
-User input (text)
-    → Preprocessing: tokenization, normalization
-    → Feature extraction: TF-IDF, embeddings, linguistic features
-    → Classification: fine-tuned BERT/RoBERTa for emotion labels
-    → Output: probability distribution over emotion categories
-          + distress severity score (0-1)
-          + engagement quality score (0-1)
-```
+for this platform specifically, the useful signals are:
 
-State-of-the-art models: **GoEmotions** (Google, 2020) — 27 emotion categories on Reddit data. **EmoRoBERTa** — fine-tuned for nuanced emotional text. **VADER** — rule-based, fast, good for social media.
+distress score (0-1): feeds directly into the safety/escalation system. need a conservative threshold — false positives (unnecessary intervention) are MUCH better than false negatives (missing someone in crisis).
 
-## LLM-Based Affective Response Generation
+engagement quality: is this conversation going well? if both parties seem engaged and positive, the match is working. if one or both seem checked out, maybe suggest a check-in.
 
-Large language models can be prompted to generate affectively calibrated responses:
+affect trajectory: tracking emotional state across MULTIPLE sessions is the interesting signal. is the mentee getting more positive over time? that's match quality. are they stuck in the same register? intervention signal.
 
-```
-System prompt: You are an empathetic facilitator on a peer support platform.
-The user appears to be in emotional distress (distress score: 0.82).
-Respond with warmth, validate their feelings, and avoid giving advice.
-Do not minimize their experience. Ask one open-ended question.
-```
+---
 
-This approach lets the platform dynamically adjust tone without maintaining separate response models per emotion category.
+the trajectory idea is underexplored. most affect systems give you a point-in-time score. but for a support platform what you really care about is trend. a mentee who's been "anxious-high" for 3 sessions in a row with the same mentor is different from one who's trending from "anxious-high" to "hopeful-medium" over 3 sessions.
 
-## Crisis Detection and Escalation
+this also feeds back into matching quality — mentors who consistently produce positive trajectory shifts in their mentees should be surfaced more. natural quality signal that doesn't require explicit rating.
 
-Any platform dealing with vulnerable populations needs a crisis layer:
-- Trained classifiers detect language patterns associated with suicidal ideation, self-harm, or acute crisis
-- Crisis-flagged conversations are immediately escalated to human moderators
-- Auto-generated safety resources are surfaced (crisis hotlines, professional referrals)
-- The AI moderates its own behavior: no advice-giving, only validation and redirection
+---
 
-**False positive tolerance**: in this domain, it is better to over-flag than to miss a genuine crisis.
+ethical issues:
+- consent: users may not know their emotional state is being classified
+- accuracy disparities: models trained on majority populations perform worse for minority groups and culturally specific expression. GoEmotions is US-English Reddit. not representative.
+- manipulation risk: knowing someone's emotional state gives you disproportionate influence. must constrain to supportive use only, never persuasive/commercial.
+- data sensitivity: emotional state data is among the most sensitive personal data imaginable. access controls must be extremely tight.
 
-## Emotional Trajectory Modeling
-
-A single affect score is insufficient. The platform maintains an **emotional trajectory** for each user across sessions:
-- Are they trending toward more positive states over time? (good sign)
-- Are they stuck in the same emotional register for multiple sessions? (intervention signal)
-- Did a match produce a measurable lift in positive affect? (match quality signal)
-
-This trajectory data feeds back into the matching algorithm: mentors who consistently produce positive trajectory shifts in mentees are surfaced more frequently.
-
-## Ethical Dimensions
-
-Affective computing raises serious ethical questions:
-- **Consent**: users may not realize their emotional state is being classified
-- **Accuracy disparities**: models trained on majority populations may underperform for minority groups, misclassifying culturally specific expression
-- **Manipulation risk**: a system that knows your emotional state has disproportionate influence — this must be constrained to supportive, not persuasive, ends
-- **Data sensitivity**: emotional state data is among the most sensitive personal information imaginable; storage and access must be tightly controlled
-
-## Connection to This Project
-
-The platform uses LLM-based affect classification on conversation text to: (1) calibrate the AI's response tone in real-time, (2) detect crisis signals and trigger escalation, and (3) compute match quality by tracking emotional trajectory improvements across sessions with a given mentor.
+TODO: look into whether there are affect datasets that are more culturally diverse. might be worth fine-tuning on a more representative corpus.
