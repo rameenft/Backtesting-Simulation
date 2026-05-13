@@ -32,16 +32,16 @@ The compilation step is where the LLM adds real value: it synthesizes across mul
 
 **1. Install dependencies**
 ```bash
-pip install anthropic sentence-transformers
+pip install google-genai sentence-transformers
 ```
 
-**2. Get an Anthropic API key**
+**2. Get a free Google API key** (no credit card)
 
-Go to [console.anthropic.com](https://console.anthropic.com/) → API Keys → Create key.
+Go to [aistudio.google.com](https://aistudio.google.com) → Get API key → Create API key.
 
 **3. Create a `.env` file in `project2/`**
 ```
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+GOOGLE_API_KEY=your-key-here
 ```
 
 **4. Verify everything is set up**
@@ -114,12 +114,12 @@ project2/
 
 ## Design Details
 
-**Compilation** uses Claude Opus 4.7 with adaptive thinking. The prompt explicitly instructs the model to:
+**Compilation** uses Gemini 2.0 Flash (free tier). The prompt explicitly instructs the model to:
 - Synthesize across *all* raw sources, not just one
 - Identify and resolve contradictions between notes
 - Surface implications that emerge only from reading multiple notes together
 - Use `[[WikiLink]]` format to cross-reference related articles
 
-**Retrieval** uses `sentence-transformers` (`all-MiniLM-L6-v2`, 80MB, runs locally). Embeddings are cached in `wiki/_embeddings.pkl`. Cosine similarity finds the 4 most relevant articles for each question — this correctly handles semantic matches that keyword overlap misses (e.g. "sad" → `AffectiveComputing`).
+**Retrieval** uses `sentence-transformers` (`all-MiniLM-L6-v2`, 80MB, runs locally — no API needed). Embeddings are cached in `wiki/_embeddings.pkl`. Cosine similarity finds the 4 most relevant articles per question — handles semantic matches that keyword overlap misses (e.g. "how does the system detect sadness" → `AffectiveComputing`).
 
-**Q&A** uses Claude Haiku 4.5 — fast and cost-effective for retrieval-augmented generation. Retrieved articles are injected as context and the model answers with citations.
+**Q&A** uses Gemini 2.0 Flash — free, fast, and capable for retrieval-augmented generation. Retrieved articles are injected as context and the model answers with citations.

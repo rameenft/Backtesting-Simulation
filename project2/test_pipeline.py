@@ -100,31 +100,32 @@ if wiki_ok:
         check(f'Retrieval: "{question[:45]}..."', hit,
               f"top4={sorted(top4)}")
 
-section("5. Anthropic API key")
-# Load .env if present
+section("5. Google API key (free at aistudio.google.com)")
 env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(env_path):
     with open(env_path) as f:
         for line in f:
-            if line.startswith("ANTHROPIC_API_KEY="):
-                os.environ.setdefault("ANTHROPIC_API_KEY", line.strip().split("=", 1)[1])
+            if line.startswith("GOOGLE_API_KEY="):
+                os.environ.setdefault("GOOGLE_API_KEY", line.strip().split("=", 1)[1])
 
-key = os.environ.get("ANTHROPIC_API_KEY", "")
+key = os.environ.get("GOOGLE_API_KEY", "")
 has_key = bool(key)
-check("ANTHROPIC_API_KEY set", has_key,
-      "key found" if has_key else "not set — create project2/.env with ANTHROPIC_API_KEY=sk-ant-...")
+check("GOOGLE_API_KEY set", has_key,
+      "key found" if has_key else "not set — create project2/.env with GOOGLE_API_KEY=...")
 
 if has_key:
     try:
-        import anthropic
-        c = anthropic.Anthropic()
-        r = c.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=5,
-            messages=[{"role": "user", "content": "hi"}]
+        from google import genai
+        from google.genai import types
+        c = genai.Client(api_key=key)
+        r = c.models.generate_content(
+            model="gemini-2.0-flash",
+            contents="Reply with just the word 'ok'.",
+            config=types.GenerateContentConfig(max_output_tokens=5),
         )
-        check("API call succeeds", True, f"response: '{r.content[0].text}'")
+        check("Gemini API call succeeds", True, f"response: '{r.text.strip()}'")
     except Exception as e:
-        check("API call succeeds", False, str(e))
+        check("Gemini API call succeeds", False, str(e))
         all_ok = False
 
 print(f"\n{'='*50}")
@@ -138,13 +139,13 @@ elif not wiki_ok and has_key:
     print("  Then run Q&A:")
     print("    python qa.py -q 'How does crisis detection work?'")
 elif wiki_ok and not has_key:
-    print("  Wiki present — Q&A works if you set your API key.")
+    print("  Wiki present. Set your key to enable Q&A:")
     print("  Create project2/.env:")
-    print("    ANTHROPIC_API_KEY=sk-ant-...")
+    print("    GOOGLE_API_KEY=your-key-here")
 else:
     print("  Setup needed:")
-    print("  1. Create project2/.env with ANTHROPIC_API_KEY=sk-ant-...")
-    print("  2. Run: python compile_wiki.py")
-    print("  3. Run: python qa.py")
-    print("\n  Get your API key at: https://console.anthropic.com/")
+    print("  1. Get a FREE key at https://aistudio.google.com  (no credit card)")
+    print("  2. Create project2/.env with:  GOOGLE_API_KEY=your-key-here")
+    print("  3. Run: python compile_wiki.py")
+    print("  4. Run: python qa.py")
 print(f"{'='*50}\n")

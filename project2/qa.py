@@ -19,23 +19,23 @@ import pickle
 import argparse
 import numpy as np
 
-# Load .env API key if present
+# Load .env if present
 _env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(_env_path):
     with open(_env_path) as _f:
         for _line in _f:
             _line = _line.strip()
-            if _line.startswith("ANTHROPIC_API_KEY="):
-                os.environ.setdefault("ANTHROPIC_API_KEY", _line.split("=", 1)[1])
+            if _line.startswith("GOOGLE_API_KEY="):
+                os.environ.setdefault("GOOGLE_API_KEY", _line.split("=", 1)[1])
 
-import anthropic
+from google import genai
+from google.genai import types
 
 WIKI_DIR = os.path.join(os.path.dirname(__file__), "wiki")
 INDEX_PATH = os.path.join(WIKI_DIR, "_index.json")
 EMBEDDINGS_PATH = os.path.join(WIKI_DIR, "_embeddings.pkl")
 EMBED_MODEL = "all-MiniLM-L6-v2"
-
-client = anthropic.Anthropic()
+QA_MODEL = "gemini-2.0-flash"
 
 
 # ── Embedding utilities ────────────────────────────────────────────────────
@@ -113,6 +113,16 @@ def render_wikilinks(text: str, available: set) -> str:
 
 # ── Answer generation ──────────────────────────────────────────────────────
 
+def get_gemini_client() -> genai.Client:
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        print("GOOGLE_API_KEY not set.")
+        print("Get a free key at https://aistudio.google.com")
+        print("Then create project2/.env with:  GOOGLE_API_KEY=your-key-here")
+        raise SystemExit(1)
+    return genai.Client(api_key=api_key)
+
+
 def answer_question(question: str, articles: dict[str, str]) -> tuple[str, list[str]]:
     if not articles:
         return "No wiki articles found. Run compile_wiki.py first.", []
@@ -143,14 +153,15 @@ Instructions:
 - Keep the answer under 300 words"""
 
     print("\nAnswering", end="", flush=True)
+    client = get_gemini_client()
     answer = ""
-    with client.messages.stream(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=700,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        for text in stream.text_stream:
-            answer += text
+    for chunk in client.models.generate_content_stream(
+        model=QA_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(max_output_tokens=700, temperature=0.2),
+    ):
+        if chunk.text:
+            answer += chunk.text
             print(".", end="", flush=True)
     print()
 
